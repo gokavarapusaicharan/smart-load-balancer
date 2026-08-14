@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Load Balancer</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f7fb;
+            color: #111827;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: auto;
+            padding: 25px;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 42px;
+            margin-bottom: 25px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            align-items: center;
+        }
+
+        select, input[type="file"], button {
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            font-size: 16px;
+        }
+
+        button {
+            background: #2563eb;
+            color: white;
+            cursor: pointer;
+            border: none;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        .server-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 22px;
+            margin-bottom: 35px;
+        }
+
+        .server-card {
+            background: white;
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+            transition: 0.3s;
+            border: 3px solid transparent;
+        }
+
+        .server-card.busy {
+            border-color: #ef4444;
+            background: #fee2e2;
+            transform: scale(1.03);
+        }
+
+        .server-card.down {
+            background: #e5e7eb;
+            opacity: 0.7;
+        }
+
+        .server-title {
+            font-size: 26px;
+            font-weight: bold;
+            margin-bottom: 18px;
+        }
+
+        .up {
+            color: #16a34a;
+            font-weight: bold;
+        }
+
+        .down-text {
+            color: #dc2626;
+            font-weight: bold;
+        }
+
+        .request-box {
+            background: white;
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+        }
+
+        .request-actions {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .output-box {
+            background: #111827;
+            color: #d1fae5;
+            padding: 20px;
+            border-radius: 12px;
+            min-height: 220px;
+            font-family: Consolas, monospace;
+            font-size: 15px;
+            white-space: pre-line;
+            overflow-y: auto;
+        }
+
+        @media (max-width: 900px) {
+            .server-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            .server-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .controls, .request-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Load Balancer</h1>
+
+        <div class="controls">
+            <label><b>Select Algorithm:</b></label>
+            <select id="algorithmSelect" onchange="changeAlgorithm()">
+                <option value="round_robin">Round Robin</option>
+                <option value="least_connections">Least Connections</option>
+            </select>
+        </div>
+
+        <div class="server-grid" id="serverGrid"></div>
+
+        <div class="request-box">
+            <div class="request-actions">
+                <input type="file" id="requestFile" accept=".txt">
+                <button onclick="sendRequests()">Send Requests</button>
+            </div>
+
+            <h2>Output</h2>
+            <div class="output-box" id="outputBox">Output will appear here...</div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchStatus() {
+            const response = await fetch("/status");
+            const data = await response.json();
+
+            document.getElementById("algorithmSelect").value = data.current_algorithm;
+
+            const grid = document.getElementById("serverGrid");
+            grid.innerHTML = "";
+
+            data.servers.forEach(server => {
+                const card = document.createElement("div");
+
+                const isBusy = server.active_connections > 0 && server.is_alive;
+                const isDown = !server.is_alive;
+
+                card.className = "server-card";
+                if (isBusy) card.classList.add("busy");
+                if (isDown) card.classList.add("down");
+
+                card.innerHTML = `
+                    <div class="server-title">Server ${server.id}</div>
+                    <p>Status: <span class="${server.is_alive ? 'up' : 'down-text'}">${server.is_alive ? 'UP' : 'DOWN'}</span></p>
+                    <p>Port: ${server.port}</p>
+                    <p>Current Request: ${server.current_request}</p>
+                    <p>Active Connections: ${server.active_connections}</p>
+                    <p>Requests Processed: ${server.requests_processed}</p>
+                `;
+
+                grid.appendChild(card);
+            });
+        }
+
+        async function changeAlgorithm() {
+            const algorithm = document.getElementById("algorithmSelect").value;
+
+            await fetch("/set_algorithm", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ algorithm })
+            });
+
+            fetchStatus();
+        }
+
+        async function sendRequests() {
+            const fileInput = document.getElementById("requestFile");
+            const outputBox = document.getElementById("outputBox");
+
+            if (!fileInput.files.length) {
+                alert("Please choose a request file first.");
+                return;
+            }
+
+            outputBox.innerText = "Sending requests...\n";
+
+            const formData = new FormData();
+            formData.append("request_file", fileInput.files[0]);
+
+            const response = await fetch("/send_requests", {
+                method: "POST",
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                outputBox.innerText = data.error;
+                return;
+            }
+
+            outputBox.innerText = data.outputs.join("\n");
+            fetchStatus();
+        }
+
+        setInterval(fetchStatus, 700);
+        fetchStatus();
+    </script>
+</body>
+</html>

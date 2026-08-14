@@ -1,0 +1,4 @@
+__pycache__/
+dashboard_data.json/
+app.log/
+requests.txt/
