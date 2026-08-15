@@ -153,14 +153,5 @@ python visualizer/app.py
 
 Open the Flask dashboard in your browser using the address shown in the terminal.
 
-## Testing
-
-Generate requests using:
-
-```bash
-python tests/test_requests.py
-```
-
-The requests can be used to observe how the load balancer distributes traffic between the available backend servers.
 
 
